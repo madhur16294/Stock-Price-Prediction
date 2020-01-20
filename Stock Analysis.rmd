@@ -1,0 +1,220 @@
+---
+title: "BF Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+#install.packages("tidyverse")
+library(tidyverse) 
+
+df_w <- read.csv("D:/Fall 2018/Business Forecasting/Group Project/seattleWeather_1948-2017.csv")
+
+summary(df_w)
+
+```
+ From summary above, we can see that PRCP has outliers with Max = 5.02. We check how many instances are > 3 and identify the one instance that had PRCP greater than 5.
+
+```{r}
+(filter(df_w,df_w$PRCP>3))
+```
+
+
+Remove NAs and check whether any NAs remain
+
+```{r}
+#df_w=na.omit(df_w) #remove NAs
+
+ df_w[df_w==0] <- NA
+
+df_w=na.omit(df_w) #remove NAs
+
+is.null(df_w) #check no NAs
+
+```
+
+
+
+```{r}
+
+library(lubridate)
+
+#extract Month and Year from Date
+df_w$Month=month(df_w$DATE)
+df_w$Year=year(df_w$DATE)
+
+#Visualize the last 20 years
+
+df_w=filter(df_w,df_w$Year>2000)
+plot(df_w$Year, df_w$PRCP, type = "l", main="Amount of rain over time in Seattle")
+
+```
+
+
+Plotting the histogram of PRCP
+```{r}
+hist(df_w$PRCP)
+```
+
+
+We can see from the above plot that there is an outlier as the X axis goes all the way to 5 although we can't see the outlier so we zoom in to see it
+
+```{r}
+ggplot(df_w)+geom_histogram(mapping=aes(x=PRCP),binwidth=.1)+coord_cartesian(xlim=c(0,6),ylim=c(0,25))
+
+```
+
+From the data, we know that the day on which 5.02 inches of rain fell was 2003-10-20. This day, was in fact Seattle's wettest day in the city's history (http://www.seattleweatherblog.com/weather-records/seattles-rainiest-day/) I decided not to remove this value from the dataset since there's only one instance like this in 70 years of data; therefore it will not significantly affect our forecasting model. Given Seattle's rainy reputation, it is representative of what can happen in Seattle on occasion over its history and this should be taken into account in forecasting.
+
+
+
+Convert dataframe to a time series
+
+```{r}
+weather_ts <- ts(df_w$PRCP, start = c(2000,1), end=c(2010,12), frequency = 12)
+
+weather_ts_test <- ts(df_w$PRCP,start = c(2011,1) ,  end=c(2017,12), frequency = 12)
+
+head(weather_ts_test)
+```
+
+
+```{r}
+#fitt <- tslm(df_w$PRCP~. , data = df_w )
+#fitt <- stepAIC(fittt, data=df_w)
+```
+
+
+
+
+Decompose time series into its components by determining moving average over each time unit by month
+
+```{r}
+f=decompose(weather_ts)
+
+plot(f$figure, type="b", xaxt="n", xlab="Date", ylab="Rain (Inches)", main="Plot of Estimated Seasonality Figure from 1948 to 2017")
+
+```
+
+
+Plotting the Decomposition of the additive time series
+
+```{r}
+plot(f)
+```
+
+
+
+
+
+
+
+Predict rain 1 year ahead using ARIMA forecast
+
+```{r}
+
+library(forecast)
+fit <- auto.arima(weather_ts)
+fore <- predict(fit, n.ahead=36)
+```
+
+
+
+```{r}
+# error bounds at 95% confidence level
+U <- fore$pred + 2*fore$se
+L <- fore$pred - 2*fore$se
+```
+
+```{r}
+ts.plot(weather_ts,fore$pred, U, L, col=c(1,2,4,4), lty = c(1,1,2,2))
+legend("topleft", c("Actual", "Forecast", "Error Bounds (95% Confidence)"), col=c(1,2,4), lty=c(1,1,2), cex=0.5)
+```
+
+
+```{r}
+accuracy(fore$pred , weather_ts_test)
+```
+
+
+
+Finding the seasonal naive of the training data
+```{r}
+seasonal_naive_forecast = snaive(weather_ts,84)
+```
+
+
+Plotting the results of the seasonal forecast
+```{r}
+autoplot(weather_ts)+
+  autolayer(weather_ts_test)+
+  autolayer(seasonal_naive_forecast, series="Seasonal naïve", PI=FALSE) +
+  xlab("Year") +
+  ylab("Rain") +
+  ggtitle("Holt's Forecast") +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+
+
+Finding the accuracy of the forecast
+
+```{r}
+accuracy(seasonal_naive_forecast , weather_ts_test)
+```
+
+
+
+HOLTs Forecast
+
+```{r}
+#fit1 <- hw(weather_ts,seasonal="additive",h=84)
+fit2 <- hw(weather_ts,seasonal="multiplicative",h=84)
+autoplot(weather_ts) +
+autolayer(weather_ts_test) +
+#autolayer(ts(df_w$PRCP, start = c(1948,1), end=c(2010,12), frequency = 12))+
+#autoplot(ts(df_w$PRCP,start = c(2011,1) , end=c(2017,12), frequency = 12)) +
+  #autolayer(fit1, series="HW additive forecasts", PI=FALSE) +
+  autolayer(fit2, series="HW multiplicative forecasts",PI=FALSE) +
+  #autoplot(weather_ts_test,series="HW multiplicative forecasts",PI=FALSE) +
+  xlab("Year") +
+  ylab("Rain") +
+  ggtitle("Holt's Forecast") +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+```{r}
+accuracy(fit2 , weather_ts_test)
+```
+
+```{r}
+fit.stl = stl(weather_ts,s.window = 5)
+
+plot(fit.stl)
+```
+
+
+```{r}
+plot(weather_ts,col="grey" , main = "Seasonally Adjusted Data")
+lines(seasadj(fit.stl),col="red" )
+```
+
+```{r}
+fcast = forecast(fit.stl,method = "holts")
+plot(fcast)
+```
+
+
+Multiple Regression 
+
+
+
+
+
+
+
